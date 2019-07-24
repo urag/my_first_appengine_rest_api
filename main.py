@@ -13,7 +13,7 @@ class GetHandler(webapp2.RequestHandler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
         name_to_search = self.request.get("name")
-        name_value_query = NameValuePair.query(NameValuePair.name == name_to_search)
+        name_value_query = NameValuePair.query(NameValuePair.name == name_to_search).order(-NameValuePair.date)
         name_value_pair_query_result = name_value_query.fetch(1)
         name_value_pair = name_value_pair_query_result[0]
         self.response.write(name_value_pair.name + "=" + name_value_pair.value)
