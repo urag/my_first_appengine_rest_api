@@ -15,3 +15,16 @@ indexes:
   - name: name
   - name: date
     direction: desc
+
+- kind: NameValuePair
+  properties:
+  - name: name
+  - name: status
+  - name: date
+    direction: desc
+
+- kind: NameValuePair
+  properties:
+  - name: status
+  - name: date
+    direction: desc
