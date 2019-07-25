@@ -12,10 +12,9 @@ class NameValuePair(ndb.Model):
     date = ndb.DateTimeProperty(auto_now_add=True)
 
 
-def get_by_name(name_to_search, status_to_search):
+def get_by_name(name_to_search):
     name_value_query = NameValuePair.query(
-        ndb.AND(NameValuePair.name == name_to_search, NameValuePair.status == status_to_search)).order(
-        -NameValuePair.date)
+        ndb.AND(NameValuePair.name == name_to_search, NameValuePair.status == LAST))
     name_value_pair_query_result = name_value_query.fetch(1)
     return name_value_pair_query_result
 
@@ -93,7 +92,7 @@ class UnsetHandler(webapp2.RequestHandler):
     def get(self):
         name = self.request.get("name")
         value = self.request.get("value")
-        pair_by_name = get_by_name(name, LAST)
+        pair_by_name = get_by_name(name)
         if len(pair_by_name):
             # Updating last entry
             pair_by_name[0].status = PREV
@@ -111,7 +110,7 @@ class GetHandler(webapp2.RequestHandler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
         name_to_search = self.request.get("name")
-        name_value_pair_query_result = get_by_name(name_to_search, LAST)
+        name_value_pair_query_result = get_by_name(name_to_search)
         if len(name_value_pair_query_result):
             name_value_pair = name_value_pair_query_result[0]
             self.response.write(name_value_pair.name + "=" + (name_value_pair.value or 'None'))
@@ -123,7 +122,7 @@ class SetHandler(webapp2.RequestHandler):
     def get(self):
         name = self.request.get("name")
         value = self.request.get("value")
-        pair_by_name = get_by_name(name, LAST)
+        pair_by_name = get_by_name(name)
         if len(pair_by_name):
             # Updating last entry
             pair_by_name[0].status = PREV
