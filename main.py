@@ -45,7 +45,7 @@ class RedoHandler(webapp2.RequestHandler):
             undo_operation.name = pair.name
             undo_operation.value_to_undo = current_value
             undo_operation.put()
-            self.response.write(pair.name + '=' + (pair.value or 'None'))
+            self.response.write(pair.name + ' = ' + (pair.value or 'None'))
         else:
             self.response.write('NO COMMANDS')
 
