@@ -20,6 +20,29 @@ def get_by_name(name_to_search, status_to_search):
     return name_value_pair_query_result
 
 
+class RedoHandler(webapp2.RequestHandler):
+    def get(self):
+        self.response.headers['Content-Type'] = 'text/plain'
+        name_value_query = NameValuePair.query(NameValuePair.status == LAST).order(-NameValuePair.date)
+        name_value_pair_query_result = name_value_query.fetch(1)
+        if len(name_value_pair_query_result):
+
+            current_value = name_value_pair_query_result[0]
+            prev_value_result = NameValuePair.query(NameValuePair.date > current_value.date).order(
+                -NameValuePair.date).fetch(1)
+            if len(prev_value_result):
+                prev_value = prev_value_result[0]
+                current_value.status = PREV
+                current_value.put()
+                prev_value.status = LAST
+                prev_value.put()
+                self.response.write(prev_value.name + "=" + (prev_value.value or 'None'))
+            else:
+                self.response.write("NO COMMANDS")
+        else:
+            self.response.write("NO COMMANDS")
+
+
 class UndoHandler(webapp2.RequestHandler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
@@ -120,6 +143,7 @@ app = webapp2.WSGIApplication([
     ('/unset', UnsetHandler),
     ('/numequalto', NumEqualToHandler),
     ('/undo', UndoHandler),
+    ('/redo', RedoHandler),
     ('/showall', ShowAllHandler),
     ('/end', EndHandler)
 ], debug=True)
