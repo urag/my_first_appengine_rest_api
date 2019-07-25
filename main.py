@@ -1,74 +1,50 @@
 import webapp2
+import logging
 from google.appengine.ext import ndb
-
-LAST = 'last'
-PREV = 'prev'
 
 
 class NameValuePair(ndb.Model):
     name = ndb.StringProperty(indexed=True)
     value = ndb.StringProperty(indexed=True)
-    status = ndb.StringProperty(indexed=True)
+
+
+class UndoOperation(ndb.Model):
+    name = ndb.StringProperty(indexed=True)
+    valueToSet = ndb.StringProperty(indexed=True)
+    date = ndb.DateTimeProperty(auto_now_add=True)
+
+
+class RedoOperation(ndb.Model):
+    name = ndb.StringProperty(indexed=True)
+    valueToSet = ndb.StringProperty(indexed=True)
     date = ndb.DateTimeProperty(auto_now_add=True)
 
 
 def get_by_name(name_to_search):
-    name_value_query = NameValuePair.query(
-        ndb.AND(NameValuePair.name == name_to_search, NameValuePair.status == LAST))
+    name_value_query = NameValuePair.query(NameValuePair.name == name_to_search)
     name_value_pair_query_result = name_value_query.fetch(1)
-    return name_value_pair_query_result
+    result = None
+    if len(name_value_pair_query_result):
+        result = name_value_pair_query_result[0]
+    return result
 
 
 class RedoHandler(webapp2.RequestHandler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
-        name_value_query = NameValuePair.query(NameValuePair.status == LAST).order(-NameValuePair.date)
-        name_value_pair_query_result = name_value_query.fetch(1)
-        if len(name_value_pair_query_result):
-
-            current_value = name_value_pair_query_result[0]
-            prev_value_result = NameValuePair.query(NameValuePair.date > current_value.date).order(
-                -NameValuePair.date).fetch(1)
-            if len(prev_value_result):
-                prev_value = prev_value_result[0]
-                current_value.status = PREV
-                current_value.put()
-                prev_value.status = LAST
-                prev_value.put()
-                self.response.write(prev_value.name + "=" + (prev_value.value or 'None'))
-            else:
-                self.response.write("NO COMMANDS")
-        else:
-            self.response.write("NO COMMANDS")
 
 
 class UndoHandler(webapp2.RequestHandler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
-        name_value_query = NameValuePair.query(NameValuePair.status == LAST).order(-NameValuePair.date)
-        name_value_pair_query_result = name_value_query.fetch(1)
-        if len(name_value_pair_query_result):
-
-            current_value = name_value_pair_query_result[0]
-            prev_value_result = NameValuePair.query(NameValuePair.date < current_value.date).order(
-                -NameValuePair.date).fetch(1)
-            if len(prev_value_result):
-                prev_value = prev_value_result[0]
-                current_value.status = PREV
-                current_value.put()
-                prev_value.status = LAST
-                prev_value.put()
-                self.response.write(prev_value.name + "=" + (prev_value.value or 'None'))
-            else:
-                self.response.write("NO COMMANDS")
-        else:
-            self.response.write("NO COMMANDS")
 
 
 class EndHandler(webapp2.RequestHandler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
         ndb.delete_multi(NameValuePair.query().fetch(keys_only=True))
+        ndb.delete_multi(UndoOperation.query().fetch(keys_only=True))
+        ndb.delete_multi(RedoOperation.query().fetch(keys_only=True))
         self.response.write('CLEANED')
 
 
@@ -83,37 +59,33 @@ class NumEqualToHandler(webapp2.RequestHandler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
         value_to_search = self.request.get("value")
-        amount = NameValuePair.query(
-            ndb.AND(NameValuePair.value == value_to_search, NameValuePair.status == LAST)).count()
+        amount = NameValuePair.query(NameValuePair.value == value_to_search).count()
         self.response.write(amount)
 
 
 class UnsetHandler(webapp2.RequestHandler):
     def get(self):
         name = self.request.get("name")
-        value = self.request.get("value")
-        pair_by_name = get_by_name(name)
-        if len(pair_by_name):
-            # Updating last entry
-            pair_by_name[0].status = PREV
-            pair_by_name[0].put()
-        name_value_pair = NameValuePair()
-        name_value_pair.name = name
+        name_value_pair = get_by_name(name)
+        value_to_undo = name_value_pair.value
         name_value_pair.value = None
-        name_value_pair.status = LAST
         name_value_pair.put()
+        # Saving (more like pushing into stuck) undo operation
+        undo_operation = UndoOperation()
+        undo_operation.name = name
+        undo_operation.valueToSet = value_to_undo
+        undo_operation.put()
         self.response.headers['Content-Type'] = 'text/plain'
-        self.response.write(name_value_pair.name + "=None")
+        self.response.write(name + '=None')
 
 
 class GetHandler(webapp2.RequestHandler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
         name_to_search = self.request.get("name")
-        name_value_pair_query_result = get_by_name(name_to_search)
-        if len(name_value_pair_query_result):
-            name_value_pair = name_value_pair_query_result[0]
-            self.response.write(name_value_pair.name + "=" + (name_value_pair.value or 'None'))
+        name_value_pair = get_by_name(name_to_search)
+        if name_value_pair:
+            self.response.write(name_value_pair.value or 'None')
         else:
             self.response.write("Not found")
 
@@ -122,16 +94,18 @@ class SetHandler(webapp2.RequestHandler):
     def get(self):
         name = self.request.get("name")
         value = self.request.get("value")
-        pair_by_name = get_by_name(name)
-        if len(pair_by_name):
-            # Updating last entry
-            pair_by_name[0].status = PREV
-            pair_by_name[0].put()
-        name_value_pair = NameValuePair()
-        name_value_pair.name = name
+        name_value_pair = get_by_name(name)
+        if name_value_pair is None:
+            name_value_pair = NameValuePair()
+            name_value_pair.name = name
+        value_to_undo = name_value_pair.value
         name_value_pair.value = value
-        name_value_pair.status = LAST
         name_value_pair.put()
+        # Saving (more like pushing into stuck) undo operation
+        undo_operation = UndoOperation()
+        undo_operation.name = name
+        undo_operation.valueToSet = value_to_undo
+        undo_operation.put()
         self.response.headers['Content-Type'] = 'text/plain'
         self.response.write(name + '=' + value)
 
