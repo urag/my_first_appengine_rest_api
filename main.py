@@ -10,13 +10,13 @@ class NameValuePair(ndb.Model):
 
 class UndoOperation(ndb.Model):
     name = ndb.StringProperty(indexed=True)
-    valueToSet = ndb.StringProperty(indexed=True)
+    value_to_undo = ndb.StringProperty(indexed=True)
     date = ndb.DateTimeProperty(auto_now_add=True)
 
 
 class RedoOperation(ndb.Model):
     name = ndb.StringProperty(indexed=True)
-    valueToSet = ndb.StringProperty(indexed=True)
+    value_to_redo = ndb.StringProperty(indexed=True)
     date = ndb.DateTimeProperty(auto_now_add=True)
 
 
@@ -31,12 +31,45 @@ def get_by_name(name_to_search):
 
 class RedoHandler(webapp2.RequestHandler):
     def get(self):
-        self.response.headers['Content-Type'] = 'text/plain'
+        redo_ops = RedoOperation.query().order(-RedoOperation.date).fetch(1)
+        if len(redo_ops):
+            redo = redo_ops[0]
+            pair = get_by_name(redo.name)
+            current_value = pair.value
+            pair.value = redo.value_to_redo
+            pair.put()
+            # Deleting redo
+            redo.key.delete()
+            # Creating undo
+            undo_operation = UndoOperation()
+            undo_operation.name = pair.name
+            undo_operation.value_to_undo = current_value
+            undo_operation.put()
+            self.response.write(pair.name + '=' + (pair.value or 'None'))
+        else:
+            self.response.write('NO COMMANDS')
 
 
 class UndoHandler(webapp2.RequestHandler):
     def get(self):
         self.response.headers['Content-Type'] = 'text/plain'
+        undo_ops = UndoOperation.query().order(-UndoOperation.date).fetch(1)
+        if len(undo_ops):
+            undo = undo_ops[0]
+            pair = get_by_name(undo.name)
+            current_value = pair.value
+            pair.value = undo.value_to_undo
+            pair.put()
+            # Deleting undo
+            undo.key.delete()
+            # Creating redo
+            redo_operation = RedoOperation()
+            redo_operation.name = pair.name
+            redo_operation.value_to_redo = current_value
+            redo_operation.put()
+            self.response.write(pair.name + ' = ' + (pair.value or 'None'))
+        else:
+            self.response.write('NO COMMANDS')
 
 
 class EndHandler(webapp2.RequestHandler):
@@ -73,10 +106,10 @@ class UnsetHandler(webapp2.RequestHandler):
         # Saving (more like pushing into stuck) undo operation
         undo_operation = UndoOperation()
         undo_operation.name = name
-        undo_operation.valueToSet = value_to_undo
+        undo_operation.value_to_undo = value_to_undo
         undo_operation.put()
         self.response.headers['Content-Type'] = 'text/plain'
-        self.response.write(name + '=None')
+        self.response.write(name + ' = None')
 
 
 class GetHandler(webapp2.RequestHandler):
@@ -104,10 +137,10 @@ class SetHandler(webapp2.RequestHandler):
         # Saving (more like pushing into stuck) undo operation
         undo_operation = UndoOperation()
         undo_operation.name = name
-        undo_operation.valueToSet = value_to_undo
+        undo_operation.value_to_undo = value_to_undo
         undo_operation.put()
         self.response.headers['Content-Type'] = 'text/plain'
-        self.response.write(name + '=' + value)
+        self.response.write(name + ' = ' + value)
 
 
 app = webapp2.WSGIApplication([
